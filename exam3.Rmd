@@ -1,0 +1,176 @@
+---
+title: "Exam 3"
+author: "Iris Reyes"
+date: "7/8/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# clear environment
+rm(list=ls(all=TRUE))
+
+# loading packages
+library(WDI)
+library(dplyr)
+library(tidyverse)
+library(rio)
+library(tidyr)
+library(tidytext)
+library(stringr)
+library(pdftools)
+library(rvest)
+library(tinytex)
+
+# still loading packages, but bringing all in from the Module 11 just in case
+library(googlesheets4)
+library(labelled)
+library(data.table)
+library(varhandle)
+library(ggrepel)
+library(geosphere)
+library(rgeos)
+library(viridis)
+library(mapview)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(devtools)
+library(remotes)
+library(raster)
+library(sp)
+library(sf)
+library(Imap)
+library(rnaturalearthhires) # devtools::install_github("ropensci/rnaturalearthhires")
+library(ggsflabel) # devtools::install_github("yutannihilation/ggsflabel")
+library(countrycode)
+library(ggplot2)
+
+```
+
+
+
+```{r}
+# loading female labor force participation data
+female_lfp <- WDI(country = "all",
+                  indicator = c("SL.TLF.CACT.FE.ZS"), # this is the WDI indicator
+                  start = 2010, end = 2015, # years of interest
+                  extra = FALSE, cache = NULL)
+
+# renaming the female labor force participation column to flfp
+female_lfp <- rename(female_lfp, flfp = SL.TLF.CACT.FE.ZS)
+
+#collapsing by the mean value for flfp for each country
+collapsed_flfp <- female_lfp %>%
+  group_by(country, year) %>%
+  summarize(mean_flfp = mean(flfp, na.rm=TRUE),
+            iso2c = iso2c)
+
+# getting rid of NAs just in case
+collapsed_flfp <- na.omit(collapsed_flfp, select=c("year","country",
+"mean_flfp"))
+
+# checking for missing country codes
+subset(collapsed_flfp, iso2c=="") # all good!
+
+# showing countries with flfp lower than 15%
+subset(collapsed_flfp, mean_flfp < 15)
+
+# making sure collapsed_flfp is in sf
+##collapsed_flfp <- st_as_sf()
+
+# getting world map from natural earth packages
+world <- ne_countries(scale = "large", returnclass = "sf")
+
+# making map of collapsed_flfp data
+flfp_map = ggplot() +
+  geom_sf(data = world) +
+  geom_sf(data = collapsed_flfp, aes(fill=mean_flfp)) +
+  scale_fill_viridis(option = "viridis") +
+  ggtitle("Mean Female Labor Force Participation, 2010-2015") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_void()
+
+##print(flfp_map)
+
+```
+
+In a Shiny app, the three main components are the user interface (UI), the server, and executing the app itself.
+The UI needs to beging with fluidpage() and have titles and inputs.
+The server needs an input and an output at the most basic.
+
+```{r}
+# importing pdf
+mytext = pdf_text(pdf = "https://pdf.usaid.gov/pdf_docs/PA00TNMJ.pdf")
+
+# turning pdf into data frame
+armeniatext = as.data.frame(mytext)
+armeniatext$page=c(1:59)
+colnames(armeniatext)[which(names(armeniatext) == "armeniatext")] <- "text" #change column name
+
+# tokenizing armeniatext
+armeniatext = armeniatext %>%
+  unnest_tokens(word, mytext) 
+
+# removing stop words
+data(stop_words)
+armeniatext <- armeniatext %>%
+  anti_join(stop_words)
+
+#word frequencies
+armeniafreq <- armeniatext %>%
+  count(word, sort = TRUE)
+head(armeniafreq)
+```
+The 5 most used words in Mike Denly's report on Armenia are law, corruption, rule, Armenia, and European, in that order.
+
+```{r}
+# loading in the Billboard Hot 100
+hot100page <- "https://www.billboard.com/charts/hot-100"
+hot100exam <- read_html(hot100page)
+
+# showing the structure
+str(hot100exam)
+
+# getting body nodes and children sorted out
+body_nodes <- hot100exam %>%
+  html_node("body") %>%
+  html_children()
+body_nodes
+
+# looking into the nodes
+body_nodes %>%
+  html_children()
+
+# getting rank
+rank <- hot100exam %>%
+  rvest::html_nodes('body') %>%
+  xml2::xml_find_all("//span[contains(@class,
+          'chart-element__rank__number')]") %>%
+  rvest::html_text()
+
+# getting artist
+artist <- hot100exam %>%
+  rvest::html_nodes('body') %>%
+  xml2::xml_find_all("//span[contains(@class,
+          'chart-element__information__artist')]") %>%
+  rvest::html_text()
+
+# getting title
+title <- hot100exam %>%
+  rvest::html_nodes('body') %>%
+  xml2::xml_find_all("//span[contains(@class,
+          'chart-element__information__song')]") %>%
+  rvest::html_text()
+
+# getting last week; didn't work :(
+last_week <- hot100exam %>%
+  rvest::html_nodes('body') %>%
+  xml2::xml_find_all("//div[contains(@class,
+          'chart-element__meta text--center color--secondary text--last')]") %>%
+  rvest::html_text()
+```
